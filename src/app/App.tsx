@@ -5,6 +5,9 @@ import { CurrentCardDisplay } from './components/CurrentCardDisplay';
 import { CategoryProgress } from './components/CategoryProgress';
 import { DrawnCardsGrid } from './components/DrawnCardsGrid';
 import { Toaster, toast } from 'sonner';
+import { TTSService } from '../services/ttsService';
+import { STTService } from '../services/sttService';
+import { soundService } from '../services/soundService';
 
 export type Suit = 'oros' | 'copas' | 'espadas' | 'bastos';
 
@@ -44,11 +47,88 @@ export default function App() {
   const [deck, setDeck] = useState<SpanishCard[]>([]);
   const [drawnCards, setDrawnCards] = useState<SpanishCard[]>([]);
   const [currentCard, setCurrentCard] = useState<SpanishCard | null>(null);
+  const [animatingCard, setAnimatingCard] = useState<SpanishCard | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [speed, setSpeed] = useState(2000);
+  const [speed, setSpeed] = useState(2600);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [sttError, setSttError] = useState<string | null>(null);
   const [achievedMilestones, setAchievedMilestones] = useState<Set<string>>(new Set());
+  
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const ttsServiceRef = useRef<TTSService | null>(null);
+  const sttServiceRef = useRef<STTService | null>(null);
+
+  const handleSTTError = (error: string) => {
+    setSttError(error);
+    const errorMsg = error === 'not-allowed' 
+      ? 'Permiso de micrófono denegado.' 
+      : `Error de voz: ${error}`;
+    toast.error(errorMsg);
+    setVoiceEnabled(false);
+  };
+
+  // Initialize services
+  useEffect(() => {
+    ttsServiceRef.current = new TTSService();
+    
+    sttServiceRef.current = new STTService(
+      (command) => handleVoiceCommand(command),
+      (error) => handleSTTError(error)
+    );
+
+    return () => {
+      sttServiceRef.current?.stop();
+      ttsServiceRef.current?.stop();
+    };
+  }, []);
+
+  // Sync STT state
+  useEffect(() => {
+    if (voiceEnabled) {
+      if (sttServiceRef.current?.isSupported()) {
+        try {
+          sttServiceRef.current.start();
+        } catch (e) {
+          handleSTTError('unknown');
+        }
+      } else {
+        toast.warning('Tu navegador no soporta comandos de voz.');
+        setVoiceEnabled(false);
+      }
+    } else {
+      sttServiceRef.current?.stop();
+    }
+  }, [voiceEnabled]);
+
+  const handleVoiceCommand = (command: string) => {
+    console.log('Comando de voz recibido:', command);
+    
+    if (command.includes('iniciar') || command.includes('empezar')) {
+      startRound();
+    } else if (command.includes('pausar') || command.includes('pausa')) {
+      if (!isPaused) pauseRound();
+    } else if (command.includes('continuar')) {
+      if (isPaused) pauseRound();
+    } else if (command.includes('reiniciar')) {
+      restartRound();
+    } else if (command.includes('repetir')) {
+      announceCurrentCard();
+    }
+  };
+
+  const announceCurrentCard = () => {
+    if (currentCard && ttsEnabled) {
+      const suitNames = {
+        oros: 'oros',
+        copas: 'copas',
+        espadas: 'espadas',
+        bastos: 'bastos'
+      };
+      ttsServiceRef.current?.speak(`${currentCard.number} de ${suitNames[currentCard.suit]}`, 1.1);
+    }
+  };
 
   const initializeDeck = () => {
     const newDeck = createDeck();
@@ -72,13 +152,29 @@ export default function App() {
   const drawCard = () => {
     if (deck.length > 0) {
       const [nextCard, ...remainingDeck] = deck;
-      const newDrawnCards = [...drawnCards, nextCard];
-      setCurrentCard(nextCard);
-      setDrawnCards(newDrawnCards);
-      setDeck(remainingDeck);
       
-      checkMilestones(newDrawnCards);
+      soundService.playCardDraw();
+      setAnimatingCard(nextCard);
+      setCurrentCard(nextCard);
+      setDeck(remainingDeck);
 
+      // TTS Announcement
+      if (ttsEnabled) {
+        const suitNames = {
+          oros: 'oros',
+          copas: 'copas',
+          espadas: 'espadas',
+          bastos: 'bastos'
+        };
+        ttsServiceRef.current?.speak(`${nextCard.number} de ${suitNames[nextCard.suit]}`, 1.1);
+      }
+
+      setTimeout(() => {
+        setDrawnCards(prev => [...prev, nextCard]);
+        setAnimatingCard(null); // Stop highlighting it as "new" in center if needed
+        checkMilestones([...drawnCards, nextCard]);
+      }, speed * 0.4);
+      
       if (remainingDeck.length === 0) {
         setIsRunning(false);
         setIsPaused(false);
@@ -86,6 +182,7 @@ export default function App() {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
+        soundService.playComplete();
         toast.success('¡Ronda completada! Todas las cartas han sido extraídas.');
       }
     }
@@ -145,6 +242,7 @@ export default function App() {
     milestones.forEach(m => {
       if (!achievedMilestones.has(m.id) && m.check(cards)) {
         setAchievedMilestones(prev => new Set(prev).add(m.id));
+        soundService.playAchievement();
         toast.success(m.message, {
           duration: 5000,
           icon: '🏆'
@@ -154,8 +252,10 @@ export default function App() {
   };
 
   const startRound = () => {
+    // Permission handled by the voiceEnabled effect above or direct toggle
     if (deck.length === 0 && drawnCards.length === 0) {
       initializeDeck();
+      soundService.playStart();
       setTimeout(() => {
         setIsRunning(true);
         setIsPaused(false);
@@ -164,18 +264,26 @@ export default function App() {
     } else if (deck.length > 0) {
       setIsRunning(true);
       setIsPaused(false);
+      soundService.playStart();
       toast.success(isPaused ? '¡Ronda reanudada!' : '¡Ronda iniciada!');
     }
   };
 
   const restartRound = () => {
     initializeDeck();
+    soundService.playRestart();
     toast.info('Ronda reiniciada');
   };
 
   const pauseRound = () => {
     setIsPaused(!isPaused);
+    soundService.playPause();
     toast.info(isPaused ? 'Ronda reanudada' : 'Ronda pausada');
+  };
+
+  const handleSpeedChange = (newSpeed: number) => {
+    setSpeed(newSpeed);
+    soundService.playClick();
   };
 
   useEffect(() => {
@@ -222,7 +330,11 @@ export default function App() {
               isPaused={isPaused}
               isRunning={isRunning}
               speed={speed}
-              onSpeedChange={setSpeed}
+              onSpeedChange={handleSpeedChange}
+              ttsEnabled={ttsEnabled}
+              onTtsToggle={setTtsEnabled}
+              voiceEnabled={voiceEnabled}
+              onVoiceToggle={setVoiceEnabled}
             />
           </div>
 

@@ -1,5 +1,7 @@
-import { Play, RotateCcw, Pause, Zap } from 'lucide-react';
+import { Play, RotateCcw, Pause, Zap, Volume2, Mic } from 'lucide-react';
 import { motion } from 'motion/react';
+import { Switch } from './ui/switch';
+import { Slider } from './ui/slider';
 
 interface ControlPanelProps {
   onStart: () => void;
@@ -9,14 +11,11 @@ interface ControlPanelProps {
   isRunning: boolean;
   speed: number;
   onSpeedChange: (speed: number) => void;
+  ttsEnabled: boolean;
+  onTtsToggle: (enabled: boolean) => void;
+  voiceEnabled: boolean;
+  onVoiceToggle: (enabled: boolean) => void;
 }
-
-const SPEEDS = [
-  { label: 'Lento', value: 3000, icon: '🐢' },
-  { label: 'Normal', value: 2000, icon: '🚶' },
-  { label: 'Rápido', value: 1000, icon: '🏃' },
-  { label: 'Turbo', value: 500, icon: '🚀' }
-];
 
 export function ControlPanel({ 
   onStart, 
@@ -25,8 +24,18 @@ export function ControlPanel({
   isPaused, 
   isRunning,
   speed,
-  onSpeedChange 
+  onSpeedChange,
+  ttsEnabled,
+  onTtsToggle,
+  voiceEnabled,
+  onVoiceToggle
 }: ControlPanelProps) {
+  const speedInSeconds = speed / 1000;
+
+  const handleSpeedChange = (value: number[]) => {
+    onSpeedChange(value[0] * 1000);
+  };
+
   return (
     <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 shadow-xl border border-white/20 h-full flex flex-col justify-between">
       <div className="space-y-3">
@@ -86,27 +95,54 @@ export function ControlPanel({
             Reiniciar Partida
           </motion.button>
         </div>
+
+        {/* Voice and Audio Toggles */}
+        <div className="space-y-2 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Volume2 className={`w-3 h-3 ${ttsEnabled ? 'text-amber-400' : 'text-white/30'}`} />
+              <span className="text-xs text-white">Anunciar cartas</span>
+            </div>
+            <Switch 
+              checked={ttsEnabled} 
+              onCheckedChange={onTtsToggle} 
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Mic className={`w-3 h-3 ${voiceEnabled ? 'text-green-400 animate-pulse' : 'text-white/30'}`} />
+              <span className="text-xs text-white">Comandos de voz</span>
+            </div>
+            <Switch 
+              checked={voiceEnabled} 
+              onCheckedChange={onVoiceToggle} 
+            />
+          </div>
+          <p className="text-[10px] text-white/30 mt-1 leading-tight">
+            Requiere HTTPS y permisos de micrófono.
+          </p>
+        </div>
       </div>
 
-      {/* Speed Control - More compact */}
-      <div className="mt-3 pt-3 border-t border-white/10">
-        <div className="grid grid-cols-4 gap-1">
-          {SPEEDS.map((speedOption) => (
-            <button
-              key={speedOption.value}
-              onClick={() => onSpeedChange(speedOption.value)}
-              title={speedOption.label}
-              className={`
-                py-1.5 rounded-md flex flex-col items-center justify-center transition-all
-                ${speed === speedOption.value 
-                  ? 'bg-purple-500/30 border border-purple-400/50 text-white' 
-                  : 'bg-white/5 text-white/40 hover:bg-white/10'
-                }
-              `}
-            >
-              <span className="text-sm">{speedOption.icon}</span>
-            </button>
-          ))}
+      {/* Speed Control - Slider */}
+      <div className="mt-3 pt-3 border-t border-white/10 space-y-3">
+        <div className="flex justify-between items-center">
+          <span className="text-xs font-semibold uppercase text-white/70 tracking-wider">Velocidad</span>
+          <span className="text-xs text-white/60 font-mono">{speedInSeconds.toFixed(1)}s</span>
+        </div>
+        
+        <Slider
+          value={[speedInSeconds]}
+          onValueChange={handleSpeedChange}
+          min={1}
+          max={10}
+          step={0.5}
+          className="w-full"
+        />
+        
+        <div className="flex justify-between px-0.5">
+          <span className="text-[10px] text-white/40 uppercase font-medium">Rápido</span>
+          <span className="text-[10px] text-white/40 uppercase font-medium">Lento</span>
         </div>
       </div>
     </div>

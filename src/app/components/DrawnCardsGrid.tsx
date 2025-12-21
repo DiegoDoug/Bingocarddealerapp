@@ -1,7 +1,6 @@
 import { SpanishCard, Suit } from '../App';
 import { Card } from './Card';
 import { motion, AnimatePresence } from 'motion/react';
-import { Layers } from 'lucide-react';
 
 interface DrawnCardsGridProps {
   cards: SpanishCard[];
@@ -43,26 +42,44 @@ export function DrawnCardsGrid({ cards, isRunning }: DrawnCardsGridProps) {
               <span className="text-lg">{SUIT_ICONS[suit]}</span>
             </div>
 
-            {/* Cascade Container - Relative with full height */}
+            {/* Cascade Container */}
             <div className="relative flex-1 overflow-hidden">
-              <AnimatePresence>
-                {cardsBySuit[suit].map((card, index) => (
-                  <motion.div
-                    key={card.id}
-                    initial={{ y: -50, opacity: 0 }}
-                    animate={{ 
-                      y: index * 28, // Adjusted offset for better fit
-                      opacity: 1, 
-                      zIndex: index 
-                    }}
-                    className="absolute w-full flex justify-center"
-                    style={{ top: 0 }}
-                  >
-                    <div className="transform scale-[0.85] origin-top">
+              <AnimatePresence initial={false}>
+                {cardsBySuit[suit].map((card, index) => {
+                  // Find if this is the absolute latest card drawn across all suits
+                  const isLatestOverall = cards[cards.length - 1]?.id === card.id;
+
+                  return (
+                    <motion.div
+                      key={card.id}
+                      initial={isLatestOverall ? { 
+                        y: -300, // Start high
+                        x: 0,
+                        scale: 1.5,
+                        opacity: 0,
+                        rotateY: 180
+                      } : false}
+                      animate={{ 
+                        y: index * 28,
+                        x: 0,
+                        scale: 0.85,
+                        opacity: 1,
+                        rotateY: 0,
+                        zIndex: index 
+                      }}
+                      transition={{ 
+                        type: 'spring',
+                        stiffness: 100,
+                        damping: 15,
+                        mass: 1
+                      }}
+                      className="absolute w-full flex justify-center origin-top"
+                      style={{ top: 0 }}
+                    >
                       <Card card={card} size="medium" />
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
               
               {cardsBySuit[suit].length === 0 && (
